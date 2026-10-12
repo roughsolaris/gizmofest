@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0aa5a8">
+<title>GizmoFest — Upgrade your everyday</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" id="favicon" href="images/logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side" aria-label="Main navigation">
+    <a href="#/home" class="brand js-brand"></a>
+    <nav id="nav">
+      <a href="#/home" data-r="home"><span data-i18n="home"></span></a>
+      <a href="#/shop" data-r="shop"><span data-i18n="shop"></span></a>
+      <a href="#/deals" data-r="deals"><span data-i18n="deals"></span><b class="hot" data-i18n="hot"></b></a>
+      <a href="#/categories" data-r="categories"><span data-i18n="categories"></span></a>
+      <a href="#/wishlist" data-r="wishlist"><span data-i18n="wishlist"></span><b class="cnt" id="wishCnt">0</b></a>
+      <a href="#/account" data-r="account"><span data-i18n="orders"></span></a>
+      <a href="#/faq" data-r="faq"><span data-i18n="faq"></span></a>
+      <a href="#/contact" data-r="contact"><span data-i18n="contact"></span></a>
+    </nav>
+    <div class="side-note"><strong data-i18n="codTitle"></strong><span data-i18n="codText"></span></div>
+  </aside>
+  <div class="scrim" id="scrim" data-act="menu"></div>
+  <div class="scrim" id="cartScrim" data-act="cart"></div>
+  <div class="main">
+    <div id="announce" class="announce" hidden></div>
+    <header class="top">
+      <button class="icon-btn menu-btn" data-act="menu" data-i18n-aria="openMenu"><span data-ic="menu"></span></button>
+      <a href="#/home" class="brand brand-top js-brand"></a>
+      <form class="search" id="searchForm" role="search">
+        <label for="q" class="sr" data-i18n="searchLbl"></label>
+        <span class="search-ic" data-ic="search"></span>
+        <input id="q" type="search" data-i18n-ph="searchPh" autocomplete="off" enterkeyhint="search">
+        <button type="button" class="clear" id="qClear" data-i18n-aria="clearSearch" hidden><span data-ic="close"></span></button>
+      </form>
+      <div class="tools-r">
+        <button class="lang" data-act="lang" data-i18n-aria="switchLang"><span data-ic="globe"></span><span id="langLbl"></span></button>
+        <a href="#/wishlist" class="icon-btn" data-i18n-aria="wishlist"><span data-ic="heart"></span><b class="cnt" id="wishCnt2">0</b></a>
+        <button class="icon-btn" data-act="cart" data-i18n-aria="openCart"><span data-ic="bag"></span><b class="cnt" id="cartCnt">0</b></button>
+        <a href="#/account" class="icon-btn hide-s" data-i18n-aria="orders"><span data-ic="user"></span></a>
+      </div>
+    </header>
+    <main id="view" tabindex="-1"></main>
+    <footer class="foot" id="foot"></footer>
+  </div>
+  <aside class="cart" id="cart" aria-label="Cart" aria-hidden="true"></aside>
+</div>
+<div class="modal" id="modal" hidden><div class="modal-box" role="dialog" aria-modal="true" id="modalBox"></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="script.js"></script>
+</body>
+</html>
