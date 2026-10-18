@@ -44,3 +44,7 @@ tr.click{cursor:pointer}tr.click:hover{background:#f7fcfc}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:4px 10px;font-size:.9rem}.kv dt{color:var(--mute)}.kv dd{margin:0;word-break:break-word}
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
 @media(max-width:900px){.app{grid-template-columns:minmax(0,1fr)}.side{position:fixed;z-index:40;left:0;top:0;width:250px;transform:translateX(-105%);transition:transform .25s;box-shadow:10px 0 30px rgba(0,0,0,.15)}.side.open{transform:none}.menu{display:inline-flex}.main{padding:0 12px 40px}.grid2,.grid3{grid-template-columns:1fr}.kv{grid-template-columns:1fr}.modal{align-items:end;padding:0}.modal-box{border-radius:18px 18px 0 0}}
+
+.scrim{display:none}
+@media(max-width:900px){.scrim{display:block;position:fixed;inset:0;background:rgba(8,24,28,.45);z-index:35;opacity:0;pointer-events:none;transition:opacity .25s}.scrim.open{opacity:1;pointer-events:auto}.side{visibility:hidden;transition:transform .25s,visibility 0s .25s}.side.open{visibility:visible;transition-delay:0s}}
+.imgs button{min-width:26px}

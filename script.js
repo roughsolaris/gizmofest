@@ -12,6 +12,8 @@ const CONFIG = {
   apiUrl: "https://script.google.com/macros/s/AKfycbx3Ywt04P3sq4EFbY9BIwIZXnpklKjj3AeZ4J_yu3BCsQnsZLB5k4aKGCISl2IqfcvJkw/exec", // paste your Apps Script web app URL (ends with /exec). Empty = built-in demo data + browser-only orders
   freeDeliveryOver: 0, bkashNote: "", announcement: "", announcementOn: false, heroTitle: "", heroText: ""
 };
+let bootPromise = null; // start downloading the store data immediately, before anything else runs
+if (CONFIG.apiUrl) { try { bootPromise = fetch(CONFIG.apiUrl + "?action=bootstrap").then(r => r.text()); bootPromise.catch(() => { }); } catch (e) { } }
 /* HOME BANNERS — empty = default cyan hero. 1 banner = static image. 2+ = auto-sliding.
    Later your admin panel can fill this (replace getBanners with a fetch). Example:
    { image: "images/banners/eid.jpg", mobileImage: "images/banners/eid-m.jpg", link: "#/deals", alt: "Eid offer" } */
@@ -90,7 +92,8 @@ const I = { // key: [English, Bangla]
   faqT: ["Frequently asked questions", "সাধারণ প্রশ্ন"], contactT: ["Contact us", "যোগাযোগ করুন"], contactText: ["Call or message us:", "কল বা মেসেজ করুন:"],
   fShop: ["Shop", "শপ"], fService: ["Customer service", "কাস্টমার সার্ভিস"], fDeliv: ["Delivery information", "ডেলিভারি তথ্য"], fRet: ["Return information", "রিটার্ন তথ্য"], rights: ["All rights reserved.", "সর্বস্বত্ব সংরক্ষিত।"],
   discount: ["Discount", "ছাড়"], coupon: ["Coupon code", "কুপন কোড"], apply: ["Apply", "প্রয়োগ"], couponOk: ["Coupon applied", "কুপন প্রয়োগ হয়েছে"], freeDel: ["Free delivery on this order. No bKash payment needed.", "এই অর্ডারে ডেলিভারি ফ্রি। বিকাশে কিছু দিতে হবে না।"],
-  loadErr: ["Could not load the store. Check your connection.", "স্টোর লোড হয়নি। ইন্টারনেট সংযোগ দেখুন।"], retry: ["Try again", "আবার চেষ্টা করুন"], loading: ["Loading…", "লোড হচ্ছে…"]
+  loadErr: ["Could not load the store. Check your connection.", "স্টোর লোড হয়নি। ইন্টারনেট সংযোগ দেখুন।"], retry: ["Try again", "আবার চেষ্টা করুন"], loading: ["Loading…", "লোড হচ্ছে…"],
+  video: ["Product video", "পণ্যের ভিডিও"], image: ["Image", "ছবি"], playVideo: ["Play video", "ভিডিও চালান"]
 };
 let lang = "en";
 try { lang = localStorage.getItem(KEYS.lang) || CONFIG.defaultLang; } catch { }
@@ -120,6 +123,7 @@ const ICONS = {
   globe: S('<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>', 18),
   eye: S('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>', 17),
   trash: S('<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>', 18),
+  bagPlus: S('<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M12 10v6M9 13h6"/>', 17),
   menu: S('<path d="M3 6h18M3 12h18M3 18h18"/>'), close: S('<path d="M18 6 6 18M6 6l12 12"/>', 18),
   left: S('<path d="m15 18-6-6 6-6"/>'), right: S('<path d="m9 18 6-6-6-6"/>'),
   facebook: F('<path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.3v7A10 10 0 0 0 22 12z"/>'),
@@ -129,6 +133,10 @@ const ICONS = {
   mail: S('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>')
 };
 
+/* Image sizing: Google Drive thumbnails are resized by changing the width in the link, so cards load small, fast images. */
+const imgUrl = (u, w) => u ? String(u).replace(/(drive\.google\.com\/thumbnail\?id=[\w-]+&sz=)w\d+/, "$1w" + w).replace(/(googleusercontent\.com\/[^=\s"']*=)w\d+/, "$1w" + w) : u;
+const ytId = u => { const m = String(u || "").match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/); return m ? m[1] : ""; };
+let curMedia = [];
 /* ===== 5. LOCAL STORAGE ===== */
 const store = {
   read(k) { try { const v = JSON.parse(localStorage.getItem(k)); return Array.isArray(v) ? v : []; } catch { return []; } },
@@ -144,16 +152,16 @@ function clampQty(id, q) { const p = byId(id); q = Math.floor(Number(q)); if (!p
 
 /* ===== 6. PRODUCT RENDERING ===== */
 const stockLabel = p => p.stock === 0 ? `<span class="low">${t("outStock")}</span>` : p.stock <= 5 ? `<span class="low">${t("onlyLeft", { n: num(p.stock) })}</span>` : t("inStock");
-function card(p) {
-  const w = getWishlist().includes(p.id), out = p.stock === 0;
+function card(p, wl) {
+  const w = getWishlist().includes(p.id), out = p.stock === 0, low = !out && p.stock <= 5, lbl = wl ? t("moveCart") : t("add");
   return `<article class="pcard reveal"><div class="pimg">${p.discount ? `<span class="badge">-${num(p.discount)}%</span>` : ""}
     <button class="wish ${w ? "on" : ""}" data-act="wish" data-id="${p.id}" aria-label="${t("wishToggle")}" aria-pressed="${w}">${ICONS.heart}</button>
-    <a href="#/product/${p.id}" class="thumb"><img src="${p.images[0]}" alt="${esc(p.name)}" loading="lazy"></a>
-    <button class="qv" data-act="qv" data-id="${p.id}" aria-label="${t("quickView")}">${ICONS.eye}</button></div>
-    <div class="pbody"><span class="pcat">${esc(catName(p.category))}</span><h3><a href="#/product/${p.id}">${esc(p.name)}</a></h3><p class="d">${esc(pdesc(p))}</p>
+    <a href="#/product/${p.id}" class="thumb"><img src="${esc(imgUrl(p.images[0], 500))}" alt="${esc(p.name)}" width="500" height="500" loading="lazy" decoding="async"></a>
+    ${out || low ? `<span class="stk">${out ? t("outStock") : t("onlyLeft", { n: num(p.stock) })}</span>` : ""}
+    <div class="pact"><button class="mini" data-act="qv" data-id="${p.id}" aria-label="${t("quickView")}" title="${t("quickView")}">${ICONS.eye}</button>${out ? "" : `<button class="mini" data-act="${wl ? "wishcart" : "add"}" data-id="${p.id}" aria-label="${lbl}" title="${lbl}">${ICONS.bagPlus}</button>`}</div></div>
+    <div class="pbody"><h3><a href="#/product/${p.id}">${esc(p.name)}</a></h3>
     <div class="price"><b>${money(p.price)}</b>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div>
-    <div class="meta"><span>${stars(p.rating)} (${num(p.reviewCount)})</span><span>${stockLabel(p)}</span></div>
-    <div class="acts"><button class="btn cy sm" data-act="add" data-id="${p.id}" ${out ? "disabled" : ""}>${t("add")}</button><button class="btn sm" data-act="buy" data-id="${p.id}" ${out ? "disabled" : ""}>${t("buyNow")}</button></div></div></article>`;
+    <button class="btn sm buy" data-act="buy" data-id="${p.id}" ${out ? "disabled" : ""}>${t("buyNow")}</button></div></article>`;
 }
 const section = (title, list, link) => list.length ? `<h2 class="sec reveal">${title}${link ? `<a class="btn ghost sm" href="${link}">${t("viewAll")}</a>` : ""}</h2><div class="grid">${list.slice(0, 4).map(card).join("")}</div>` : "";
 const emptyState = (icon, title, text, btn, href) => `<div class="empty"><div class="big">${icon}</div><h3>${title}</h3><p>${text}</p><a class="btn" href="${href}">${btn}</a></div>`;
@@ -163,7 +171,7 @@ const reviewsHtml = () => `<div class="reviews">${REVIEWS.map(r => `<div class="
 function heroHtml() {
   const b = getBanners();
   if (!b.length) return `<section class="hero reveal"><div><h1>${esc(CONFIG.heroTitle || t("tagline"))}</h1><p>${esc(CONFIG.heroText || t("heroText"))}</p><a class="btn" href="#/shop">${t("shopNow")}</a></div></section>`;
-  const slides = b.map((x, i) => { const img = `<picture>${x.mobileImage ? `<source media="(max-width:700px)" srcset="${esc(x.mobileImage)}">` : ""}<img src="${esc(x.image)}" alt="${esc(x.alt || t("offers"))}" ${i ? 'loading="lazy"' : ""}></picture>`; return x.link ? `<a class="slide ${i ? "" : "on"}" href="${esc(x.link)}">${img}</a>` : `<div class="slide ${i ? "" : "on"}">${img}</div>`; }).join("");
+  const slides = b.map((x, i) => { const img = `<picture><source media="(max-width:700px)" srcset="${esc(imgUrl(x.mobileImage || x.image, 800))}"><img src="${esc(imgUrl(x.image, 1600))}" alt="${esc(x.alt || t("offers"))}" width="1600" height="600" decoding="async" ${i ? 'loading="lazy"' : 'fetchpriority="high"'}></picture>`; return x.link ? `<a class="slide ${i ? "" : "on"}" href="${esc(x.link)}">${img}</a>` : `<div class="slide ${i ? "" : "on"}">${img}</div>`; }).join("");
   const ctrl = b.length > 1 ? `<button class="sbtn prev" data-act="sprev" aria-label="${t("prev")}">${ICONS.left}</button><button class="sbtn next" data-act="snext" aria-label="${t("next")}">${ICONS.right}</button><div class="dots">${b.map((_, i) => `<button data-act="slide" data-i="${i}" class="${i ? "" : "on"}" aria-label="${i + 1}"></button>`).join("")}</div>` : "";
   return `<section class="slider reveal" id="slider" aria-roledescription="carousel" aria-label="${t("offers")}"><div class="slides">${slides}</div>${ctrl}</section>`;
 }
@@ -221,10 +229,18 @@ const viewCategories = () => `<h2 class="sec">${t("categories")}</h2><div class=
 
 /* ===== 9. PRODUCT DETAILS & QUICK VIEW ===== */
 const qtyBox = (p, v) => `<div class="qty"><button data-act="qminus" aria-label="${t("dec")}">−</button><input type="number" inputmode="numeric" min="1" max="${p.stock}" value="${v}" data-max="${p.stock}" aria-label="${t("qty")}"><button data-act="qplus" aria-label="${t("inc")}">+</button></div>`;
+const mediaView = x => x.t === "v"
+  ? `<button class="vposter" data-act="playvid" data-id="${x.id}" aria-label="${t("playVideo")}" style="background-image:url(https://i.ytimg.com/vi/${x.id}/hqdefault.jpg)"><span class="play big">▶</span></button>`
+  : `<img id="mainImg" src="${esc(imgUrl(x.s, 900))}" alt="" width="900" height="900" decoding="async" fetchpriority="high">`;
+function galleryHtml(p) { // order: 1st image, then the video, then the remaining images
+  const m = (p.images || []).map(s => ({ t: "i", s })), vid = ytId(p.video); if (vid) m.splice(Math.min(1, m.length), 0, { t: "v", id: vid }); curMedia = m;
+  if (!m.length) return `<div class="gal"><div class="thumb"></div></div>`;
+  return `<div class="gal"><div class="thumb mainview" id="mainView">${mediaView(m[0])}</div>${m.length > 1 ? `<div class="thumbs">${m.map((x, i) => `<button class="${i ? "" : "on"}" data-act="media" data-i="${i}" aria-label="${x.t === "v" ? t("video") : t("image") + " " + (i + 1)}"><img src="${x.t === "v" ? "https://i.ytimg.com/vi/" + x.id + "/default.jpg" : esc(imgUrl(x.s, 150))}" alt="" width="64" height="64" loading="lazy" decoding="async">${x.t === "v" ? '<span class="play">▶</span>' : ""}</button>`).join("")}</div>` : ""}</div>`;
+}
 function viewProduct(id) {
   const p = byId(id); if (!p) return emptyState(ICONS.search, t("notFound"), t("notFoundT"), t("browseProd"), "#/shop");
   const rel = PRODUCTS.filter(x => x.category === p.category && x.id !== p.id).slice(0, 4), w = getWishlist().includes(p.id), ok = p.stock > 0;
-  return `<div class="panel detail"><div class="gal"><div class="thumb"><img id="mainImg" src="${p.images[0]}" alt="${esc(p.name)}"></div><div class="thumbs">${p.images.map((s, i) => `<button class="${i ? "" : "on"}" data-act="img" data-src="${s}" aria-label="${i + 1}"><img src="${s}" alt=""></button>`).join("")}</div></div>
+  return `<div class="panel detail">${galleryHtml(p)}
   <div><span class="tag">${esc(catName(p.category))}</span><h1>${esc(p.name)}</h1><p class="meta">${stars(p.rating)} · ${t("nReviews", { n: num(p.reviewCount) })}</p>
   <div class="price" style="margin:8px 0"><b style="font-size:1.6rem">${money(p.price)}</b>${p.oldPrice ? `<s>${money(p.oldPrice)}</s> <span class="tag">-${num(p.discount)}%</span>` : ""}</div>
   <p>${stockLabel(p)}</p><p style="margin:8px 0 14px;color:var(--mute)">${esc(pdesc(p))}</p>${ok ? qtyBox(p, 1) : ""}
@@ -237,7 +253,7 @@ function openModal(html) { $("#modalBox").innerHTML = `<button class="x" data-ac
 function closeModal() { $("#modal").hidden = true; syncLock(); }
 function quickView(id) {
   const p = byId(id); if (!p) return; const ok = p.stock > 0;
-  openModal(`<div class="detail"><div class="thumb" style="border-radius:14px"><img src="${p.images[0]}" alt="${esc(p.name)}"></div><div><h2 style="padding-right:36px">${esc(p.name)}</h2><p class="meta">${stars(p.rating)}</p><div class="price" style="margin:6px 0"><b>${money(p.price)}</b>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div><p>${stockLabel(p)}</p><p style="margin:8px 0 12px;color:var(--mute);font-size:.9rem">${esc(pdesc(p))}</p>${ok ? qtyBox(p, 1) : ""}
+  openModal(`<div class="detail"><div class="thumb" style="border-radius:14px"><img src="${esc(imgUrl(p.images[0], 700))}" alt="${esc(p.name)}" width="700" height="700" decoding="async"></div><div><h2 style="padding-right:36px">${esc(p.name)}</h2><p class="meta">${stars(p.rating)}</p><div class="price" style="margin:6px 0"><b>${money(p.price)}</b>${p.oldPrice ? `<s>${money(p.oldPrice)}</s>` : ""}</div><p>${stockLabel(p)}</p><p style="margin:8px 0 12px;color:var(--mute);font-size:.9rem">${esc(pdesc(p))}</p>${ok ? qtyBox(p, 1) : ""}
   <div class="dact"><button class="btn cy" data-act="add" data-id="${p.id}" ${ok ? "" : "disabled"}>${t("add")}</button><button class="btn" data-act="buy" data-id="${p.id}" ${ok ? "" : "disabled"}>${t("buyNow")}</button><button class="btn ghost" data-act="wish" data-id="${p.id}" aria-label="${t("wishToggle")}">${ICONS.heart}</button></div><a href="#/product/${p.id}" data-act="close" style="color:var(--cy-d);font-weight:700">${t("fullDetails")}</a></div></div>`);
 }
 
@@ -258,7 +274,7 @@ function calculateTotals(items) {
 }
 function renderCart() {
   const c = getCart(), tt = calculateTotals(c);
-  $("#cart").innerHTML = `<div class="cart-head"><h2>${t("myCart", { n: num(tt.quantity) })}</h2><button class="icon-btn" data-act="cart" aria-label="${t("close")}">${ICONS.close}</button></div>` + (c.length ? `<div class="cart-list">${c.map(i => { const p = byId(i.id); return `<div class="cart-row"><div class="thumb"><img src="${p.images[0]}" alt=""></div><div><b>${esc(p.name)}</b><div class="meta" style="margin:2px 0 6px">${money(p.price)}</div><div class="qty"><button data-act="cminus" data-id="${p.id}" aria-label="${t("dec")}">−</button><input type="number" inputmode="numeric" min="1" max="${p.stock}" value="${i.qty}" data-act="cset" data-id="${p.id}" aria-label="${t("qty")}"><button data-act="cplus" data-id="${p.id}" aria-label="${t("inc")}">+</button></div></div><button class="rm" data-act="crem" data-id="${p.id}" aria-label="${t("remove")}">${ICONS.trash}</button></div>`; }).join("")}</div>
+  $("#cart").innerHTML = `<div class="cart-head"><h2>${t("myCart", { n: num(tt.quantity) })}</h2><button class="icon-btn" data-act="cart" aria-label="${t("close")}">${ICONS.close}</button></div>` + (c.length ? `<div class="cart-list">${c.map(i => { const p = byId(i.id); return `<div class="cart-row"><div class="thumb"><img src="${esc(imgUrl(p.images[0], 150))}" alt="" width="64" height="64" decoding="async"></div><div><b>${esc(p.name)}</b><div class="meta" style="margin:2px 0 6px">${money(p.price)}</div><div class="qty"><button data-act="cminus" data-id="${p.id}" aria-label="${t("dec")}">−</button><input type="number" inputmode="numeric" min="1" max="${p.stock}" value="${i.qty}" data-act="cset" data-id="${p.id}" aria-label="${t("qty")}"><button data-act="cplus" data-id="${p.id}" aria-label="${t("inc")}">+</button></div></div><button class="rm" data-act="crem" data-id="${p.id}" aria-label="${t("remove")}">${ICONS.trash}</button></div>`; }).join("")}</div>
   <div class="sum"><div><span>${t("subtotal")}</span><span>${money(tt.subtotal)}</span></div>${tt.discount ? `<div><span>${t("discount")}</span><span>-${money(tt.discount)}</span></div>` : ""}<div><span>${t("delivBk")}</span><span>${money(tt.deliveryCharge)}</span></div><div class="tot"><span>${t("total")}</span><span>${money(tt.total)}</span></div></div>
   <button class="btn cy" style="margin-top:14px" data-act="checkout">${t("checkout")}</button><button class="btn ghost" style="margin-top:8px" data-act="cart">${t("cont")}</button>`
     : `<div class="empty" style="flex:1;align-content:center"><div class="big">${ICONS.bag}</div><h3>${t("cartEmpty")}</h3><button class="btn" data-act="cart" data-go="#/shop">${t("cont")}</button></div>`);
@@ -271,7 +287,7 @@ const syncLock = () => { document.body.style.overflow = ($("#cart").classList.co
 function toggleWish(id) { id = Number(id); let w = getWishlist(); if (w.includes(id)) { w = w.filter(x => x !== id); toast(t("tWRem")); } else { w.push(id); toast(t("tWAdd")); } saveWishlist(w); if (!$("#modal").hidden) closeModal(); route(true); }
 function viewWishlist() {
   const l = getWishlist().map(byId).filter(Boolean);
-  return `<h2 class="sec">${t("wishlist")}</h2>` + (l.length ? `<div class="grid">${l.map(p => card(p).replace('data-act="add"', 'data-act="wishcart"').replace(`>${t("add")}<`, `>${t("moveCart")}<`)).join("")}</div>` : emptyState(ICONS.heart, t("wlEmpty"), t("wlEmptyT"), t("browseProd"), "#/shop"));
+  return `<h2 class="sec">${t("wishlist")}</h2>` + (l.length ? `<div class="grid">${l.map(p => card(p, true)).join("")}</div>` : emptyState(ICONS.heart, t("wlEmpty"), t("wlEmptyT"), t("browseProd"), "#/shop"));
 }
 
 /* ===== 12. CHECKOUT + PAYMENT ===== */
@@ -417,7 +433,8 @@ document.addEventListener("click", e => {
     crem: () => { setCartQty(id, 0); toast(t("tRemoved")); },
     qplus: () => { const i = $(".qty input", b.parentNode); if (+i.value < +i.dataset.max) i.value = +i.value + 1; else toast(t("tOnly", { n: num(i.dataset.max) }), true); },
     qminus: () => { const i = $(".qty input", b.parentNode); if (+i.value > 1) i.value = +i.value - 1; },
-    img: () => { $("#mainImg").src = b.dataset.src; b.parentNode.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); },
+    media: () => { const m = curMedia[+b.dataset.i]; if (!m) return; $("#mainView").innerHTML = mediaView(m); b.parentNode.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); },
+    playvid: () => { $("#mainView").innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(b.dataset.id)}?autoplay=1&rel=0" title="${t("video")}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`; },
     order: () => { const o = getOrders().find(x => x.orderId === id); if (o) openModal(orderDetail(o)); },
     slide: () => slider && slider.go(+b.dataset.i), snext: () => slider && slider.next(), sprev: () => slider && slider.prev()
   };
@@ -481,10 +498,11 @@ async function api(action, data = {}) {
   if (!j.ok) throw new Error(j.error || t("loadErr")); return j.data;
 }
 function applyRemote(d) {
-  PRODUCTS.length = 0; (d.products || []).forEach(p => { if (!p.images || !p.images.length) p.images = [ph("📦", "#eef4f5")]; PRODUCTS.push(p); });
+  PRODUCTS.length = 0; (d.products || []).forEach(p => { if (!p.images || !p.images.length) p.images = ytId(p.video) ? ["https://i.ytimg.com/vi/" + ytId(p.video) + "/hqdefault.jpg"] : [ph("📦", "#eef4f5")]; PRODUCTS.push(p); });
   CATEGORIES.length = 0; (d.categories || []).forEach(c => CATEGORIES.push({ key: c.name, bn: c.nameBn || c.name, icon: c.icon || "🛍️" }));
   BANNERS.length = 0; (d.banners || []).forEach(b => BANNERS.push(b));
   REVIEWS.length = 0; (d.reviews || []).forEach(r => REVIEWS.push({ name: r.name, rating: r.rating, date: r.date, en: r.text, bn: r.text }));
+  if (d.faqs && d.faqs.length) { FAQS.length = 0; d.faqs.forEach(f => FAQS.push([[f.question, f.questionBn || f.question], [f.answer, f.answerBn || f.answer]])); }
   const s = d.settings || {};
   ["businessName", "currency", "phone", "email", "whatsapp", "messenger", "facebook", "instagram", "bkashNumber", "bkashNote", "announcement", "heroTitle", "heroText"].forEach(k => { if (s[k] !== undefined && s[k] !== "") CONFIG[k] = s[k]; });
   if (s.tagline) I.tagline[0] = s.tagline;
@@ -492,20 +510,27 @@ function applyRemote(d) {
   ["showNew", "showTrending", "showOffers", "showFeatured", "showReviews"].forEach(k => { CONFIG[k] = String(s[k]).toUpperCase() !== "FALSE"; });
   CONFIG.announcementOn = String(s.announcementOn).toUpperCase() === "TRUE";
 }
-async function loadRemote() {
-  let j; try { const r = await fetch(CONFIG.apiUrl + "?action=bootstrap"); j = await r.json(); } catch { throw new Error(t("loadErr")); }
+async function loadRemote() { // resolves true when the data changed
+  let txt; try { txt = await (bootPromise || fetch(CONFIG.apiUrl + "?action=bootstrap").then(r => r.text())); } catch { throw new Error(t("loadErr")); } finally { bootPromise = null; }
+  let j; try { j = JSON.parse(txt); } catch { throw new Error(t("loadErr")); }
   if (!j.ok) throw new Error(j.error || t("loadErr"));
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(j.data)); } catch { }
-  applyRemote(j.data);
+  const raw = JSON.stringify(j.data); let same = false;
+  try { same = localStorage.getItem(CACHE_KEY) === raw; localStorage.setItem(CACHE_KEY, raw); } catch { }
+  if (!same) applyRemote(j.data);
+  return !same;
 }
 function renderAnnounce() { const e = $("#announce"), on = CONFIG.announcementOn && CONFIG.announcement; e.hidden = !on; e.textContent = on ? CONFIG.announcement : ""; }
 function refreshAll() { renderBrand(); renderFooter(); renderAnnounce(); updateBadges(); renderCart(); }
+const skeleton = () => `<div class="sk sk-hero"></div><div class="grid" style="margin-top:22px">${'<div class="sk sk-card"></div>'.repeat(4)}</div>`;
 async function start() {
   applyStatic();
   if (!CONFIG.apiUrl) { refreshAll(); return route(); }
   let cached = null; try { cached = JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { }
-  if (cached) { applyRemote(cached); refreshAll(); route(); loadRemote().then(() => { refreshAll(); if (!location.hash.startsWith("#/checkout")) route(true); }).catch(() => { }); return; }
-  renderBrand(); renderFooter(); $("#view").innerHTML = `<div class="empty"><p>${t("loading")}</p></div>`;
+  if (cached && cached.products) { // repeat visit: show instantly from the saved copy, refresh quietly, re-render only if something changed
+    applyRemote(cached); refreshAll(); route();
+    loadRemote().then(changed => { if (changed) { refreshAll(); if (!location.hash.startsWith("#/checkout")) route(true); } }).catch(() => { }); return;
+  }
+  renderBrand(); renderFooter(); $("#view").innerHTML = skeleton();
   try { await loadRemote(); refreshAll(); route(); } catch (e) { $("#view").innerHTML = `<div class="empty"><h3>${t("loadErr")}</h3><button class="btn" data-act="retry">${t("retry")}</button></div>`; }
 }
 start();

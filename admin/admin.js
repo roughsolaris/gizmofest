@@ -25,23 +25,25 @@ const opt = (list, cur) => list.map(x => { const [v, l] = Array.isArray(x) ? x :
 const csvCell = v => `"${String(v ?? "").replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
 
 /* ===== session ===== */
-function endSession() { token = ""; sessionStorage.removeItem("gf_admin_token"); $("#app").hidden = true; $("#login").hidden = false; closeModal(); }
+function endSession() { menu(false); token = ""; sessionStorage.removeItem("gf_admin_token"); $("#app").hidden = true; $("#login").hidden = false; closeModal(); }
 $("#loginForm").addEventListener("submit", async e => {
   e.preventDefault(); const b = $("#loginBtn"); b.disabled = true; $("#loginErr").textContent = "";
   try { const r = await call("login", { password: $("#pw").value }); token = r.token; sessionStorage.setItem("gf_admin_token", token); $("#pw").value = ""; start(); }
   catch (err) { $("#loginErr").textContent = err.message; } b.disabled = false;
 });
-$("#logout").addEventListener("click", () => endSession());
+$("#logout").addEventListener("click", async () => { try { await call("logout"); } catch { } endSession(); });
 async function boot() { if (!token) return endSession(); try { await call("session"); start(); } catch { endSession(); } }
 
 /* ===== shell / router ===== */
-const PAGES = { dashboard: ["Dashboard", pgDashboard], orders: ["Orders", pgOrders], products: ["Products", pgProducts], categories: ["Categories", pgCategories], banners: ["Homepage banners", pgBanners], coupons: ["Coupons", pgCoupons], reviews: ["Reviews", pgReviews], inventory: ["Inventory log", pgInventory], settings: ["Settings", pgSettings] };
+const PAGES = { dashboard: ["Dashboard", pgDashboard], orders: ["Orders", pgOrders], products: ["Products", pgProducts], categories: ["Categories", pgCategories], banners: ["Homepage banners", pgBanners], coupons: ["Coupons", pgCoupons], reviews: ["Reviews", pgReviews], inventory: ["Inventory log", pgInventory], faq: ["FAQ", pgFaq], settings: ["Settings", pgSettings] };
 function start() { $("#login").hidden = true; $("#app").hidden = false; $("#nav").innerHTML = Object.keys(PAGES).map(k => `<a href="#${k}" data-p="${k}">${PAGES[k][0]}</a>`).join(""); go(); }
-function go() { closeModal(); const k = PAGES[location.hash.slice(1)] ? location.hash.slice(1) : "dashboard"; S.page = 1; $$("#nav a").forEach(a => a.classList.toggle("on", a.dataset.p === k)); $("#title").textContent = PAGES[k][0]; $("#side").classList.remove("open"); $("#view").innerHTML = '<p class="muted">Loading…</p>'; run(() => PAGES[k][1]()); }
+function go() { closeModal(); const k = PAGES[location.hash.slice(1)] ? location.hash.slice(1) : "dashboard"; S.page = 1; $$("#nav a").forEach(a => a.classList.toggle("on", a.dataset.p === k)); $("#title").textContent = PAGES[k][0]; menu(false); $("#view").innerHTML = '<p class="muted">Loading…</p>'; run(() => PAGES[k][1]()); }
 window.addEventListener("hashchange", () => token && go());
-$("#menuBtn").addEventListener("click", () => $("#side").classList.toggle("open"));
+const menu = open => { $("#side").classList.toggle("open", open); $("#scrim").classList.toggle("open", open); };
+$("#menuBtn").addEventListener("click", () => menu(!$("#side").classList.contains("open")));
+$("#scrim").addEventListener("click", () => menu(false));
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); menu(false); } if (e.key === "Enter" && e.target.id === "p-url") { e.preventDefault(); const b = $("[data-act=addImgUrl]"); if (b) b.click(); } });
 const view = html => { $("#view").innerHTML = html; };
 const pager = (total, fnName) => { const pages = Math.max(1, Math.ceil(total / PAGE_SIZE)); return `<div class="pager"><button class="btn ghost sm" data-act="pg" data-d="-1" data-f="${fnName}" ${S.page <= 1 ? "disabled" : ""}>Prev</button><span class="muted">Page ${S.page} / ${pages} · ${total} items</span><button class="btn ghost sm" data-act="pg" data-d="1" data-f="${fnName}" ${S.page >= pages ? "disabled" : ""}>Next</button></div>`; };
 const paginate = l => l.slice((S.page - 1) * PAGE_SIZE, S.page * PAGE_SIZE);
@@ -77,7 +79,7 @@ async function showOrder(id) {
   <dl class="kv"><dt>Subtotal</dt><dd>${money(o.subtotal)}</dd><dt>Discount</dt><dd>${money(o.discount)} ${o.couponCode ? "(" + esc(o.couponCode) + ")" : ""}</dd><dt>Delivery</dt><dd>${money(o.deliveryCharge)}</dd><dt>Total</dt><dd><b>${money(o.total)}</b></dd></dl>
   ${Number(o.deliveryCharge) > 0 && !locked ? `<div class="row"><b>Delivery-charge payment:</b><button class="btn sm" data-act="pay" data-id="${esc(id)}" data-v="Verified">Mark verified</button><button class="btn red sm" data-act="pay" data-id="${esc(id)}" data-v="Rejected">Reject</button><span class="muted">Check the TxID in your bKash app first.</span></div>` : ""}
   ${locked ? '<p class="muted">This order is cancelled and locked.</p>' : `<div class="grid2"><label>Change status<select id="os">${opt(["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled"], o.status)}</select></label><label>Note / cancel reason<input id="osn" placeholder="Required when cancelling"></label></div><button class="btn" data-act="setStatus" data-id="${esc(id)}">Update status</button>`}
-  <label>Internal admin notes<textarea id="oan">${esc(o.adminNote)}</textarea></label><div class="row"><button class="btn ghost sm" data-act="saveNote" data-id="${esc(id)}">Save note</button><button class="btn ghost sm" data-act="print" data-id="${esc(id)}">Print invoice / packing slip</button></div>
+  <label>Internal admin notes<textarea id="oan">${esc(o.adminNote)}</textarea></label><div class="row"><button class="btn ghost sm" data-act="saveNote" data-id="${esc(id)}">Save note</button><button class="btn ghost sm" data-act="print" data-id="${esc(id)}">Print invoice / packing slip</button><button class="btn red sm" data-act="delOrder" data-id="${esc(id)}" style="margin-left:auto">Delete order</button></div>
   <h2>History</h2><table><tbody>${h.map(x => `<tr><td>${fdate(x.date)}</td><td>${esc(x.from)} ${x.from ? "→" : ""} ${esc(x.to)}</td><td>${esc(x.note)}</td></tr>`).join("")}</tbody></table>`);
 }
 function printOrder(id) {
@@ -92,11 +94,16 @@ function exportCsv() {
 }
 
 /* ===== images ===== */
-function resize(file, max = 1600) {
-  return new Promise((res, rej) => { const img = new Image(), u = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", .86).split(",")[1]); }; img.onerror = () => rej(new Error("Could not read this image")); img.src = u; });
+function resize(file, max = 1600, q = .86) {
+  return new Promise((res, rej) => { const img = new Image(), u = URL.createObjectURL(file); img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", q).split(",")[1]); }; img.onerror = () => rej(new Error("Could not read this image")); img.src = u; });
 }
-async function uploadFile(file) { const data = await resize(file); return (await call("upload", { mime: "image/jpeg", data })).url; }
+async function uploadFile(file, max = 1600, q = .86) { const data = await resize(file, max, q); return (await call("upload", { mime: "image/jpeg", data })).url; }
 
+const driveId = u => { const m = String(u).match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=|thumbnail\?id=)([\w-]+)/); return m ? m[1] : ""; };
+function normImgUrl(u) { u = String(u || "").trim(); if (/^http:\/\//i.test(u)) u = "https://" + u.slice(7); if (!/^https:\/\/\S+$/i.test(u)) throw new Error("Paste a full image link that starts with https://"); const id = driveId(u); return id ? "https://drive.google.com/thumbnail?id=" + id + "&sz=w1600" : u; }
+const testImg = u => new Promise((res, rej) => { const i = new Image(), bad = () => rej(new Error("That link did not load as an image. Use a direct image link (.jpg/.png/.webp) or a Google Drive link shared as 'Anyone with the link'.")); i.onload = res; i.onerror = bad; setTimeout(bad, 15000); i.src = u; });
+const ytIdC = u => { const m = String(u || "").trim().match(/^(?:https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)|)([\w-]{11})(?:[?&#].*)?$/i); return m ? m[1] : ""; };
+function videoPreview() { const v = $("#p-video"), box = $("#v-prev"); if (!v || !box) return; const val = v.value.trim(), id = ytIdC(val); box.innerHTML = !val ? "" : id ? `<img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" style="width:160px;border-radius:10px"><span class="muted">Video recognised</span>` : '<span style="color:var(--red)">This is not a valid YouTube link</span>'; }
 /* ===== products ===== */
 const PF = { q: "", status: "", cat: "", low: "", sort: "updated" };
 async function pgProducts(reload = true) {
@@ -109,7 +116,7 @@ async function pgProducts(reload = true) {
   <div class="scroll"><table><thead><tr><th></th><th>Product</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr></thead><tbody>${paginate(l).map(p => `<tr><td><img class="thumb" src="${esc((p.images || [])[0] || "")}" alt="" onerror="this.style.visibility='hidden'"></td><td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.category)} · ${esc(p.sku) || "no SKU"}</span></td><td>${money(p.price)}${Number(p.oldPrice) ? `<br><s class="muted">${money(p.oldPrice)}</s>` : ""}</td><td>${Number(p.stock) <= lowOf(p) ? `<span class="tag ${Number(p.stock) ? "Pending" : "Cancelled"}">${p.stock} low</span>` : p.stock}</td><td><span class="tag ${p.status}">${p.status}</span></td><td class="row"><button class="btn ghost sm" data-act="editProduct" data-id="${p.id}">Edit</button><button class="btn ghost sm" data-act="stockProduct" data-id="${p.id}">Stock</button><button class="btn ghost sm" data-act="togglePub" data-id="${p.id}">${p.status === "published" ? "Unpublish" : "Publish"}</button></td></tr>`).join("") || '<tr><td colspan="6" class="muted">No products yet. Click "Add product".</td></tr>'}</tbody></table></div>${pager(l.length, "products")}</div>`);
 }
 let imgState = [];
-const imgGrid = () => `<div class="imgs">${imgState.map((u, i) => `<div><img src="${esc(u)}" alt="">${i === 0 ? '<b style="color:#07676b">Primary</b>' : "&nbsp;"}<div class="row"><button type="button" data-act="imgMove" data-i="${i}" data-d="-1">◀</button><button type="button" data-act="imgMove" data-i="${i}" data-d="1">▶</button><button type="button" data-act="imgDel" data-i="${i}">✕</button></div></div>`).join("")}</div>`;
+const imgGrid = () => `<div class="imgs">${imgState.map((u, i) => `<div><img src="${esc(u)}" alt="">${i === 0 ? '<b style="color:#07676b">Primary</b>' : "&nbsp;"}<div class="row">${i ? `<button type="button" data-act="imgFirst" data-i="${i}" title="Make primary">★</button>` : ""}<button type="button" data-act="imgMove" data-i="${i}" data-d="-1">◀</button><button type="button" data-act="imgMove" data-i="${i}" data-d="1">▶</button><button type="button" data-act="imgDel" data-i="${i}">✕</button></div></div>`).join("")}</div>`;
 function productForm(p) {
   p = p || { status: "draft", images: [], features: [], specifications: {}, stock: 0, price: "", oldPrice: "" }; imgState = [...(p.images || [])];
   const ck = (id, v, l) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="${id}" ${v ? "checked" : ""}> ${l}</label>`;
@@ -121,13 +128,16 @@ function productForm(p) {
   <div class="grid2"><label>Features (one per line)<textarea id="p-feat">${esc((p.features || []).join("\n"))}</textarea></label><label>Specifications (Key: value per line)<textarea id="p-spec">${esc(Object.entries(p.specifications || {}).map(([k, v]) => k + ": " + v).join("\n"))}</textarea></label></div>
   <label>Keywords (for search)<input id="p-kw" value="${esc(p.keywords)}"></label>
   <div class="row">${ck("p-new", p.isNew === true || p.isNew === "TRUE", "New arrival")}${ck("p-trend", p.isTrending === true || p.isTrending === "TRUE", "Trending")}${ck("p-feat2", p.isFeatured === true || p.isFeatured === "TRUE", "Featured")}${ck("p-deal", p.isDeal === true || p.isDeal === "TRUE", "Deal")}</div>
-  <div><b>Images</b> <span class="muted">First image is the primary image.</span><div id="imgBox">${imgGrid()}</div><label>Upload images<input type="file" id="p-file" accept="image/*" multiple></label></div>
+  <div><b>Images</b> <span class="muted">The first image is the main image shown on the product card.</span><div id="imgBox">${imgGrid()}</div>
+  <div class="grid2" style="margin-top:8px"><label>Upload images<input type="file" id="p-file" accept="image/*" multiple></label><label>…or paste an image link<span class="row" style="flex-wrap:nowrap"><input id="p-url" placeholder="https://… (or a Google Drive share link)"><button type="button" class="btn ghost sm" data-act="addImgUrl">Add</button></span></label></div></div>
+  <label>YouTube video link (optional)<input id="p-video" value="${esc(p.video)}" placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"></label><div id="v-prev" class="row"></div><p class="muted">On the store the gallery shows: 1st image, then the video, then the other images.</p>
   <div class="row"><button class="btn" data-act="saveProduct">Save product</button><button class="btn ghost" data-act="closeModal">Cancel</button>${p.id ? `<button class="btn red" data-act="delProduct" data-id="${p.id}" style="margin-left:auto">Delete</button>` : ""}</div>`);
+  videoPreview();
 }
 function readProduct() {
   const spec = {}; $("#p-spec").value.split("\n").forEach(l => { const i = l.indexOf(":"); if (i > 0) spec[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
   const b = id => $("#" + id).checked;
-  return { id: $("#p-id").value || undefined, name: $("#p-name").value, sku: $("#p-sku").value, category: $("#p-cat").value, price: $("#p-price").value, oldPrice: $("#p-old").value, stock: $("#p-stock").value, lowStockAt: $("#p-low").value, status: $("#p-status").value, description: $("#p-desc").value, descBn: $("#p-bn").value, features: $("#p-feat").value.split("\n").map(s => s.trim()).filter(Boolean), specifications: spec, keywords: $("#p-kw").value, isNew: b("p-new"), isTrending: b("p-trend"), isFeatured: b("p-feat2"), isDeal: b("p-deal"), images: imgState };
+  return { id: $("#p-id").value || undefined, name: $("#p-name").value, sku: $("#p-sku").value, category: $("#p-cat").value, price: $("#p-price").value, oldPrice: $("#p-old").value, stock: $("#p-stock").value, lowStockAt: $("#p-low").value, status: $("#p-status").value, description: $("#p-desc").value, descBn: $("#p-bn").value, features: $("#p-feat").value.split("\n").map(s => s.trim()).filter(Boolean), specifications: spec, keywords: $("#p-kw").value, isNew: b("p-new"), isTrending: b("p-trend"), isFeatured: b("p-feat2"), isDeal: b("p-deal"), images: imgState, video: $("#p-video").value.trim() };
 }
 
 /* ===== categories ===== */
@@ -155,6 +165,16 @@ function bannerForm(b) {
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="b-act" ${b.active === true || b.active === "TRUE" ? "checked" : ""}> Active</label><div class="row"><button class="btn" data-act="saveBanner">Save banner</button><button class="btn ghost" data-act="closeModal">Cancel</button></div>`);
 }
 
+/* ===== FAQ ===== */
+async function pgFaq() {
+  S.faqs = (await call("faqList")).faqs; const on = f => f.active === true || f.active === "TRUE";
+  view(`<div class="panel"><p class="muted">These questions replace the built-in FAQ on the store (shown in English and Bangla). Use <b>{p}</b> in an answer to insert the current delivery charge. If no FAQ is active, the store shows its built-in list.</p><div class="tools" style="margin-top:10px"><button class="btn" data-act="newFaq">+ Add question</button>${S.faqs.length ? "" : '<button class="btn ghost" data-act="seedFaq">Add the default FAQs</button>'}</div>
+  ${S.faqs.map((f, i) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--line)"><div class="row"><button class="btn ghost sm" data-act="faqMove" data-i="${i}" data-d="-1">▲</button><button class="btn ghost sm" data-act="faqMove" data-i="${i}" data-d="1">▼</button></div><div style="flex:1;min-width:180px"><b>${esc(f.question)}</b><br><span class="muted">${esc(f.answer)}</span></div><span class="tag ${on(f) ? "published" : "draft"}">${on(f) ? "shown" : "hidden"}</span><button class="btn ghost sm" data-act="editFaq" data-id="${esc(f.id)}">Edit</button><button class="btn red sm" data-act="delFaq" data-id="${esc(f.id)}">Delete</button></div>`).join("") || '<p class="muted">No custom FAQs yet.</p>'}</div>`);
+}
+function faqForm(f) {
+  f = f || { active: true };
+  modal(`<h2>${f.id ? "Edit" : "New"} question</h2><input type="hidden" id="q-id" value="${esc(f.id || "")}"><label>Question (English)<input id="q-q" value="${esc(f.question)}" maxlength="200"></label><label>Answer (English)<textarea id="q-a" maxlength="1000">${esc(f.answer)}</textarea></label><label>Question (Bangla, optional)<input id="q-qb" value="${esc(f.questionBn)}" maxlength="200"></label><label>Answer (Bangla, optional)<textarea id="q-ab" maxlength="1000">${esc(f.answerBn)}</textarea></label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="q-act" ${f.active === true || f.active === "TRUE" ? "checked" : ""}> Show on the store</label><div class="row"><button class="btn" data-act="saveFaq">Save</button><button class="btn ghost" data-act="closeModal">Cancel</button></div>`);
+}
 /* ===== coupons / reviews / inventory / settings ===== */
 async function pgCoupons() {
   const l = (await call("couponList")).coupons; S.coupons = l;
@@ -184,12 +204,13 @@ const debounce = (f, ms = 250) => { let t; return (...a) => { clearTimeout(t); t
 const reRender = { orders: () => pgOrders(false), products: () => pgProducts(false) };
 document.addEventListener("input", debounce(e => {
   const id = e.target.id || ""; if (id.startsWith("of-")) { const k = id.slice(3); OF[k] = e.target.value; S.page = 1; pgOrders(false).then(() => { const f = $("#" + id); if (f && f.type !== "date" && f.tagName === "INPUT") { f.focus(); f.setSelectionRange(99, 99); } }); }
+  else if (id === "p-video") videoPreview();
   else if (id.startsWith("pf-")) { PF[id.slice(3)] = e.target.value; S.page = 1; pgProducts(false).then(() => { const f = $("#" + id); if (f && f.tagName === "INPUT") { f.focus(); f.setSelectionRange(99, 99); } }); }
 }));
 document.addEventListener("change", async e => {
   const id = e.target.id; if (!id) return;
   if (id.startsWith("of-") || id.startsWith("pf-")) return;
-  if (id === "p-file") { toast("Uploading…"); for (const f of e.target.files) { const u = await run(() => uploadFile(f)); if (u) { imgState.push(u); $("#imgBox").innerHTML = imgGrid(); } } e.target.value = ""; }
+  if (id === "p-file") { toast("Uploading…"); for (const f of e.target.files) { const u = await run(() => uploadFile(f, 1000, .84)); if (u) { imgState.push(u); $("#imgBox").innerHTML = imgGrid(); } } e.target.value = ""; }
   if (id === "b-file" || id === "b-mfile") { toast("Uploading…"); const u = await run(() => uploadFile(e.target.files[0])); if (u) { const k = id === "b-file" ? "image" : "mobileImage", p = $(id === "b-file" ? "#b-prev" : "#b-mprev"); banImg[k] = u; p.src = u; p.style.display = "block"; } }
 });
 const move = (arr, i, d) => { const j = i + d; if (j < 0 || j >= arr.length) return arr; const a = [...arr];[a[i], a[j]] = [a[j], a[i]]; return a; };
@@ -208,6 +229,14 @@ document.addEventListener("click", async e => {
     togglePub: () => { const p = S.products.find(x => String(x.id) === id); run(async () => { await call("productStatus", { id, status: p.status === "published" ? "draft" : "published" }); await pgProducts(); }, "Updated"); },
     stockProduct: () => { const p = S.products.find(x => String(x.id) === id); modal(`<h2>Adjust stock: ${esc(p.name)}</h2><p class="muted">Current stock: <b>${p.stock}</b></p><div class="grid2"><label>Change (+ add / − remove)<input id="s-d" type="number" value="0"></label><label>Reason<input id="s-r" placeholder="e.g. New shipment, damaged"></label></div><div class="row"><button class="btn" data-act="saveStock" data-id="${id}">Apply</button><button class="btn ghost" data-act="closeModal">Cancel</button></div>`); },
     saveStock: () => run(async () => { await call("stockAdjust", { id, delta: $("#s-d").value, reason: $("#s-r").value }); closeModal(); await pgProducts(); }, "Stock updated"),
+    imgFirst: () => { const i = Number(d.i); imgState.unshift(imgState.splice(i, 1)[0]); $("#imgBox").innerHTML = imgGrid(); },
+    addImgUrl: () => run(async () => { const u = normImgUrl($("#p-url").value); if (imgState.indexOf(u) >= 0) throw new Error("That image is already added"); await testImg(u); imgState.push(u); $("#p-url").value = ""; $("#imgBox").innerHTML = imgGrid(); }, "Image added"),
+    delOrder: () => { if (confirm("Delete order " + id + " permanently?\n\nThis cannot be undone. If the order is still active, its stock goes back to the product.")) run(async () => { await call("orderDelete", { orderId: id, confirm: true }); closeModal(); await pgOrders(); }, "Order deleted"); },
+    newFaq: () => faqForm(), editFaq: () => faqForm(S.faqs.find(f => f.id === id)),
+    saveFaq: () => run(async () => { await call("faqSave", { id: $("#q-id").value || undefined, question: $("#q-q").value, answer: $("#q-a").value, questionBn: $("#q-qb").value, answerBn: $("#q-ab").value, active: $("#q-act").checked }); closeModal(); await pgFaq(); }, "FAQ saved"),
+    delFaq: () => { if (confirm("Delete this question?")) run(async () => { await call("faqDelete", { id }); await pgFaq(); }, "Deleted"); },
+    seedFaq: () => run(async () => { await call("faqSeed"); await pgFaq(); }, "Default FAQs added"),
+    faqMove: () => run(async () => { await call("reorder", { sheet: "FAQ", ids: move(S.faqs, Number(d.i), Number(d.d)).map(x => x.id) }); await pgFaq(); }),
     imgMove: () => { imgState = move(imgState, Number(d.i), Number(d.d)); $("#imgBox").innerHTML = imgGrid(); }, imgDel: () => { imgState.splice(Number(d.i), 1); $("#imgBox").innerHTML = imgGrid(); },
     newCat: () => catForm(), editCat: () => catForm(S.cats.find(c => c.id === id)),
     saveCat: () => run(async () => { await call("categorySave", { id: $("#c-id").value || undefined, name: $("#c-name").value, nameBn: $("#c-bn").value, icon: $("#c-icon").value, active: $("#c-act").checked }); closeModal(); await pgCategories(); }, "Category saved"),

@@ -58,3 +58,17 @@ Uploads are resized in the browser (max 1600px), saved to a Drive folder "GizmoF
 - Sheets get slow beyond a few thousand orders. Export CSV and archive old rows occasionally.
 - No CORS headers can be set in Apps Script. The site uses simple `text/plain` POST requests, which browsers allow without preflight.
 - Product reviews: there is no review form on the store yet. Add rows to the **Reviews** sheet (status `visible`) or build a form later; moderation (hide/delete) works in admin.
+
+---
+## Update notes (this version)
+**Backend is now a standalone project.** `SPREADSHEET_ID` at the top of `Code.gs` points to your spreadsheet (opened with `SpreadsheetApp.openById`). The account that owns the script must be able to edit that sheet. Keep the sheet **private** (do not share it by link). Run `diagnose()` to get a plain-language report, and `makeSheetPrivate()` if it says the sheet is shared.
+
+**After pasting the new `Code.gs`:**
+1. Run `setup()` again (safe: it only adds the new `FAQ` sheet and the new `video` column to Products; it refuses to touch a sheet whose headers do not match and tells you which one).
+2. Run `installWarmTrigger()` once. It refreshes the store's data cache every 5 minutes so visitors never wait for a cold start. This is the biggest speed-up for the live site.
+3. **Deploy → Manage deployments → Edit → New version → Deploy** (same URL). If Google asks for new permissions (triggers), accept.
+4. Your existing owner password keeps working; it is upgraded automatically to PBKDF2 the next time you log in.
+
+**New admin features:** delete orders (Orders → open an order → Delete order; if the order was still active its stock goes back), FAQ editor (FAQ → "Add the default FAQs" to start from the built-in list), product video (YouTube link; the gallery shows 1st image → video → other images) and "paste an image link" next to Upload (Google Drive share links are converted automatically).
+
+**Speed tips:** upload product photos from the admin (they are resized to 1000px and the store asks Google for 500px versions in product cards). Large photos pasted by link are loaded as-is, so prefer upload or Drive links.
