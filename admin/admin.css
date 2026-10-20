@@ -48,3 +48,9 @@ tr.click{cursor:pointer}tr.click:hover{background:#f7fcfc}
 .scrim{display:none}
 @media(max-width:900px){.scrim{display:block;position:fixed;inset:0;background:rgba(8,24,28,.45);z-index:35;opacity:0;pointer-events:none;transition:opacity .25s}.scrim.open{opacity:1;pointer-events:auto}.side{visibility:hidden;transition:transform .25s,visibility 0s .25s}.side.open{visibility:visible;transition-delay:0s}}
 .imgs button{min-width:26px}
+
+
+td.row {
+  display: table-cell;
+  vertical-align: middle;
+}
